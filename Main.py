@@ -1,7 +1,11 @@
+from functools import partial
+
 import PySimpleGUI as sg
 import datetime
 import logzero
 from logzero import logger
+
+from CapsLockListener import start_listen
 from DC_PSU import DCPowerSupplyUnit, State
 from Images.images import Buttons
 
@@ -153,7 +157,8 @@ def main():
         [sg.Button('Exit')]]
 
     window = sg.Window('DC Power Supply Unit Controller', layout)
-
+    power_handler = partial(power_button_handler, window, psu)
+    start_listen(power_handler)
     while True:  # Event Loop
         event, values = window.read()
         logger.info(event)
