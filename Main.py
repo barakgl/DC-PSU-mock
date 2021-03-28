@@ -53,6 +53,16 @@ def channel_frame(title, key, max_volt):
     return sg.Frame(title, [frame_layout], font='Any 12', title_color='grey')
 
 
+def current_status_frame():
+
+    frame_layout = [
+        [sg.T(f'Channel 1'), sg.T(f'   0V', relief=sg.RELIEF_SUNKEN, key=f'1_status', background_color='teal')],
+        [sg.T(f'Channel 2'), sg.T(f'   0V', relief=sg.RELIEF_SUNKEN, key=f'2_status', background_color='teal')]
+
+    ]
+    return sg.Frame(title='', layout=frame_layout, font='Any 12', title_color='grey')
+
+
 # - Click Handlers - #
 def power_button_handler(window: sg.Window, psu: DCPowerSupplyUnit):
     """
@@ -80,6 +90,8 @@ def power_button_handler(window: sg.Window, psu: DCPowerSupplyUnit):
             element.update(image_data=Buttons.power_off_small)
             change_frame_status(window, '1', True, psu)
             change_frame_status(window, '2', True, psu)
+            window[f'1_status'].update(value=f'0V'.ljust(5))
+            window[f'2_status'].update(value=f'0V'.ljust(5))
 
 
 def channel_toggle_handler(window: sg.Window, psu: DCPowerSupplyUnit, ch_num: int):
@@ -107,20 +119,27 @@ def channel_toggle_handler(window: sg.Window, psu: DCPowerSupplyUnit, ch_num: in
             element.update(checkbox_color='red')
 
 
-def channel_play_handler(window: sg.Window, psu: DCPowerSupplyUnit, ch_num: int):
+def channel_play_handler(window: sg.Window, psu: DCPowerSupplyUnit, ch_num: int, max_amp: int):
     """
     Play button event handler.
     Calls PSU class methods according to play/pause status and channel number.
     Updates status bar in case of an error.
+    :param max_amp:
     :param window: sg.Window object
     :param psu: DCPowerSupplyUnit object
     :param ch_num: int channel number.
     :return:
     """
     key = f'{ch_num}_play'
-    amp = window[f'{ch_num}_spin'].get()
+    amp = float(window[f'{ch_num}_spin'].get())
     element = window[key]
     if element.get_text() == 'Play':
+        if amp == 0:
+            window['status_bar'].update(f'Cannot set 0V')
+            return
+        if amp > max_amp:
+            window['status_bar'].update(f'Cannot set {amp}V too high (MAX {max_amp}V)')
+            return
         if psu.channels[ch_num - 1].state == State.OFF:
             window['status_bar'].update(f'Channel {ch_num} is disabled.')
             return
@@ -128,11 +147,14 @@ def channel_play_handler(window: sg.Window, psu: DCPowerSupplyUnit, ch_num: int)
             if psu.channel_on(ch_num):
                 logger.info(f'Channel {ch_num} injecting ')
                 element.update(text='Pause', button_color='green')
+                # str.ljust(width[, fillchar])
+                window[f'{ch_num}_status'].update(value=f'{amp}V'.ljust(5))
     else:
         if psu.channel_off(ch_num):
             # element.ButtonText = ''
             logger.info(f'Channel {ch_num} stopped injection.')
             element.update(text='Play', button_color='grey')
+            window[f'{ch_num}_status'].update(value=f'0V'.ljust(5))
 
 
 # - Main Window - #
@@ -142,16 +164,20 @@ def main():
     Create a layout, run event loop and event handlers calls.
     :return:
     """
+    max_amp = 60
     psu = DCPowerSupplyUnit('sn')
     psu.connect('someip', 'user', 'password')
 
     layout = [
         [sg.T(' ' * 55), sg.T('Status: OFF', key='status')],
-        [channel_frame('Channel 1', '1', 24)],
-        [channel_frame('Channel 2', '2', 24)],
-
-        [sg.T(' ' * 30), sg.Text('', key='power')],
-        [sg.T(' ' * 30), sg.Button(image_data=Buttons.power_off_small, size=(10, 10), key='power_button')]
+        [channel_frame('Channel 1', '1', max_amp)],
+        [channel_frame('Channel 2', '2', max_amp)],
+        # [current_status_frame()],
+        [sg.T(' ' * 10),
+            # sg.T(' ' * 30),
+         sg.Text('', key='power')],
+        [current_status_frame(), sg.T(' ' * 28),
+         sg.Button(image_data=Buttons.power_off_small, size=(10, 10), key='power_button')]
         ,
         [sg.Text(size=(40, 0), key='status_bar')],
         [sg.Button('Exit')]]
@@ -170,7 +196,7 @@ def main():
         if 'toggle' in event:
             channel_toggle_handler(window, psu, int(event[0]))
         if 'play' in event:
-            channel_play_handler(window, psu, int(event[0]))
+            channel_play_handler(window, psu, int(event[0]), max_amp)
 
     window.close()
 
